@@ -56,6 +56,51 @@ The backend also exposes these Prisma scripts: `npm run db:migrate` and `npm run
 
 `frontend/.env` may set `VITE_API_URL`; the default is `http://localhost:5000/api`.
 
+## Deploy to Render and Vercel
+
+1. Push the project to GitHub.
+2. In Render, create a **Web Service** for the repository:
+   - Root Directory: `backend`
+   - Build Command: `npm install && npx prisma generate`
+   - Start Command: `npm start`
+   - Add the backend environment variables listed below. Render supplies `PORT` to the service.
+3. Apply the committed Prisma migrations to the production Neon database before using the API. Run `npx prisma migrate deploy` from the backend with the production `DATABASE_URL`.
+4. In Vercel, import the same repository:
+   - Root Directory: `frontend`
+   - Framework Preset: `Vite`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Add `VITE_API_URL` as a frontend environment variable.
+5. Set Render's `CLIENT_URL` to the exact deployed Vercel origin, such as `https://your-frontend-name.vercel.app` (no path or trailing slash). Set Vercel's `VITE_API_URL` to the exact Render API origin plus `/api`, such as `https://your-backend-name.onrender.com/api`.
+6. Redeploy both services after changing their environment variables.
+
+Backend production environment variables in Render:
+
+```env
+DATABASE_URL=<Neon pooled PostgreSQL connection string>
+JWT_SECRET=<long random secret>
+JWT_EXPIRES_IN=7d
+CLIENT_URL=https://your-frontend-name.vercel.app
+NODE_ENV=production
+```
+
+Render sets `PORT` automatically; the API uses `5000` as its local fallback. Never add database credentials or JWT secrets to Vercel. The only frontend environment variable is:
+
+```env
+VITE_API_URL=https://your-backend-name.onrender.com/api
+```
+
+The production API allows only the origin in `CLIENT_URL`, enables credentialed CORS, and sets the session cookie as HTTP-only, secure, and `SameSite=None`. The Vercel rewrite keeps React Router URLs working when a page is refreshed directly.
+
+### Deployment troubleshooting
+
+- **CORS errors:** make sure Render's `CLIENT_URL` exactly matches the Vercel origin, including `https://`, without a trailing slash. Make sure Vercel's `VITE_API_URL` includes the Render origin and `/api`, then redeploy both.
+- **401 Unauthorized:** sign in again and check that `JWT_SECRET` has not changed between deployments. Check browser cookies and confirm the API returns `Access-Control-Allow-Credentials: true` for the Vercel origin.
+- **Prisma errors:** check the Render build logs for `prisma generate`; confirm the generated client matches `schema.prisma` and apply migrations with `npx prisma migrate deploy`.
+- **Database connection errors:** verify Render's `DATABASE_URL` is copied from the correct Neon project, uses the pooled host and `sslmode=require`, and has URL-encoded credentials. Confirm the Neon project and endpoint are active.
+- **Cookie not being sent:** production requires HTTPS, `NODE_ENV=production`, `SameSite=None`, `Secure`, Axios `withCredentials`, and CORS credentials. Check browser privacy settings if third-party cookies are blocked; using custom frontend and backend domains under the same site can avoid cross-site cookie restrictions.
+- **Backend sleeping on Render's free plan:** a service that has been idle may take time to wake on its next request. Use an always-on plan if that startup delay is not acceptable.
+
 ## API
 
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
